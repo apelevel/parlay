@@ -6,8 +6,7 @@ import Admin from "./AdminDashboard";
 import "./index.css";
 
 const isAdminPage =
-  window.location.pathname === "/admin" ||
-  window.location.pathname === "/admin/";
+  new URLSearchParams(window.location.search).get("portal") === "parlay";
 
 ReactDOM.createRoot(
   document.getElementById("root")!
@@ -16,3 +15,4 @@ ReactDOM.createRoot(
     {isAdminPage ? <Admin /> : <App />}
   </React.StrictMode>
 );
+
