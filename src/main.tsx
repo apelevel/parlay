@@ -7,8 +7,7 @@ import "./index.css";
 
 const isAdminPage =
   window.location.pathname === "/admin" ||
-  window.location.pathname === "/admin/" ||
-  window.location.search.includes("test=admin");
+  window.location.pathname === "/admin/";
 
 ReactDOM.createRoot(
   document.getElementById("root")!
