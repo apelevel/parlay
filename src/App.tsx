@@ -38,6 +38,7 @@ type Proposal = {
   results?: VotingResult[]
   proof_url?: string | null
   results_finalized?: boolean
+  closing_block?: string | null
 }
 
 const publicClient = createPublicClient({
@@ -71,7 +72,7 @@ function formatCountdown(endTime: string, now: number) {
 
 function formatVotingPower(value: string) {
   try {
-    return BigInt(value).toLocaleString()
+    return Number(formatUnits(BigInt(value), 18)).toLocaleString(undefined, { maximumFractionDigits: 4 })
   } catch {
     return value
   }
@@ -401,7 +402,7 @@ function App() {
                 {result
                   ? formatVotingPower(result.voting_power)
                   : '0'}{' '}
-                weighted votes
+                $PARLAY-weighted votes
               </small>
             </div>
           )
@@ -610,7 +611,7 @@ function App() {
               closing will not count. Signing is gasless, and each wallet
               may submit only one ballot. Wallet addresses and signatures
               may be published for independent verification. Closing-snapshot
-              weighting is still being implemented for this test vote.
+              weighting is calculated after the voting deadline.
             </p>
           </section>
         ))}
@@ -649,8 +650,9 @@ function App() {
 
                 <p>
                   <small>
-                    Snapshot block:{' '}
-                    {proposal.snapshot_block}
+                    {proposal.results_finalized
+                      ? `Closing snapshot block: ${proposal.closing_block ?? proposal.snapshot_block}`
+                      : 'Closing snapshot: awaiting verification'}
                   </small>
                 </p>
 
