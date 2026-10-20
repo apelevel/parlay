@@ -6,6 +6,7 @@ import {
   http,
   formatUnits,
   erc20Abi,
+  getAddress,
 } from 'viem'
 import { robinhood, PARLAY_TOKEN } from './chain'
 import './App.css'
@@ -87,6 +88,9 @@ function App() {
   const [proposalError, setProposalError] = useState('')
   const [now, setNow] = useState(Date.now())
   const [selected, setSelected] = useState<Record<number, number>>({})
+  const [submitting, setSubmitting] = useState<number | null>(null)
+  const [voteErrors, setVoteErrors] = useState<Record<number, string>>({})
+  const [voteSuccess, setVoteSuccess] = useState<Record<number, string>>({})
 
   useEffect(() => {
     let active = true
@@ -205,6 +209,90 @@ function App() {
       )
     } finally {
       setConnecting(false)
+    }
+  }
+
+  async function submitVote(proposal: Proposal) {
+    const optionId = selected[proposal.id]
+    if (!optionId || submitting !== null || voteSuccess[proposal.id]) return
+
+    setVoteErrors((previous) => ({ ...previous, [proposal.id]: '' }))
+    setSubmitting(proposal.id)
+
+    try {
+      const ethereum = (
+        window as Window & { ethereum?: Parameters<typeof custom>[0] }
+      ).ethereum
+      if (!ethereum) throw new Error('No browser wallet detected.')
+
+      // Check the active account and network again at signing time.
+      const accounts = await ethereum.request({
+        method: 'eth_requestAccounts',
+      }) as WalletAddress[]
+      if (!accounts.length) throw new Error('Connect a wallet first.')
+      const address = getAddress(accounts[0])
+      if (wallet && address.toLowerCase() !== wallet.toLowerCase()) {
+        throw new Error('Wallet account changed. Reconnect your wallet before voting.')
+      }
+
+      const chainId = await ethereum.request({ method: 'eth_chainId' }) as string
+      if (BigInt(chainId) !== 4663n) {
+        throw new Error('Switch your wallet to Robinhood Chain (chain ID 4663) and try again.')
+      }
+
+      const nonce = crypto.randomUUID()
+      // This JSON structure and property order must match src/worker.ts.
+      const signedMessage = JSON.stringify({
+        action: 'CAST_PARLAY_VOTE',
+        origin: window.location.origin,
+        chainId: 4663,
+        token: '0xc4a481c39437680c54a2fdbe170d48a919ec98b7',
+        proposalId: proposal.id,
+        optionId,
+        walletAddress: address,
+        nonce,
+      })
+
+      const signature = await ethereum.request({
+        method: 'personal_sign',
+        params: [
+          `0x${Array.from(new TextEncoder().encode(signedMessage))
+            .map((byte) => byte.toString(16).padStart(2, '0')).join('')}`,
+          address,
+        ],
+      }) as `0x${string}`
+
+      const response = await fetch('/api/votes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          proposalId: proposal.id,
+          optionId,
+          walletAddress: address,
+          nonce,
+          signature,
+        }),
+      })
+      const result = await response.json() as {
+        success?: boolean
+        error?: string
+      }
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Your ballot could not be recorded.')
+      }
+
+      setWallet(address)
+      setVoteSuccess((previous) => ({
+        ...previous,
+        [proposal.id]: 'Your signed ballot has been recorded. Voting power will be calculated at closing.',
+      }))
+    } catch (err) {
+      setVoteErrors((previous) => ({
+        ...previous,
+        [proposal.id]: err instanceof Error ? err.message : 'Voting failed.',
+      }))
+    } finally {
+      setSubmitting(null)
     }
   }
 
@@ -482,14 +570,32 @@ function App() {
               </small>
             </div>
 
-            <button className="vote" disabled>
-              VOTING NOT YET ENABLED
+            <button
+              className="vote"
+              disabled={!selected[proposal.id] || submitting !== null || !!voteSuccess[proposal.id]}
+              onClick={() => void submitVote(proposal)}
+            >
+              {voteSuccess[proposal.id]
+                ? 'BALLOT RECORDED ✓'
+                : submitting === proposal.id
+                  ? 'SIGNING / SUBMITTING...'
+                  : !selected[proposal.id]
+                    ? 'SELECT AN OPTION TO VOTE'
+                    : 'SIGN & SUBMIT VOTE'}
             </button>
 
+            {voteErrors[proposal.id] && (
+              <p role="alert" className="notice">{voteErrors[proposal.id]}</p>
+            )}
+            {voteSuccess[proposal.id] && (
+              <p role="status" className="notice">{voteSuccess[proposal.id]}</p>
+            )}
             <p className="notice">
-              Proposal is open for viewing.
-              Votes are not being accepted or recorded yet.
-              Results will remain hidden until voting closes.
+              Early-holder test vote. Signing is gasless. One ballot per wallet;
+              votes cannot be changed. Ballot wallet addresses and signatures
+              may be published for verification. Token ownership is not yet
+              enforced, and weighted results remain unavailable until closing
+              snapshot verification is implemented.
             </p>
           </section>
         ))}
@@ -538,6 +644,34 @@ function App() {
             ))}
           </section>
         )}
+
+      <a
+        href="https://discord.gg/embpUdUBE"
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="For support, legal terms and FAQ, visit our Discord"
+        style={{
+          position: 'fixed',
+          right: 16,
+          bottom: 20,
+          zIndex: 100,
+          display: 'block',
+          maxWidth: 230,
+          padding: '12px 16px',
+          border: '1px solid #e5c35b',
+          borderRadius: 12,
+          background: '#155e35',
+          color: '#fff7d6',
+          fontSize: 12,
+          fontWeight: 700,
+          lineHeight: 1.45,
+          textAlign: 'center',
+          textDecoration: 'none',
+          boxShadow: '0 5px 20px rgba(0,0,0,0.28)',
+        }}
+      >
+        For support, legal terms and FAQ, please visit our Discord ↗
+      </a>
 
       <footer>
         $PARLAY © 2026 · Community votes are advisory.
