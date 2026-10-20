@@ -155,6 +155,17 @@ function App() {
     }
   }, [])
 
+  function disconnectWallet() {
+    // Disconnect this website session. Browser wallet extensions may
+    // retain their own authorization and must be managed separately.
+    setWallet(null)
+    setBalance(null)
+    setError('')
+    setSelected({})
+    setVoteErrors({})
+    setVoteSuccess({})
+  }
+
   async function connectWallet() {
     setConnecting(true)
     setError('')
@@ -443,13 +454,13 @@ function App() {
 
         <button
           className="connect"
-          onClick={connectWallet}
-          disabled={connecting}
+          onClick={wallet ? disconnectWallet : connectWallet}
+          disabled={connecting || submitting !== null}
         >
           {connecting
             ? 'CONNECTING...'
             : wallet
-              ? `${wallet.slice(0, 6)}...${wallet.slice(-4)}`
+              ? `DISCONNECT WALLET (${wallet.slice(0, 6)}...${wallet.slice(-4)})`
               : 'CONNECT WALLET'}
         </button>
 
@@ -591,11 +602,15 @@ function App() {
               <p role="status" className="notice">{voteSuccess[proposal.id]}</p>
             )}
             <p className="notice">
-              Early-holder test vote. Signing is gasless. One ballot per wallet;
-              votes cannot be changed. Ballot wallet addresses and signatures
-              may be published for verification. Token ownership is not yet
-              enforced, and weighted results remain unavailable until closing
-              snapshot verification is implemented.
+              You can cast your vote at any time during the voting period.
+              Your voting power will be based on the $PARLAY tokens held in
+              your wallet at the closing snapshot, not when you sign.
+              Tokens purchased before closing will count if you still hold
+              them at the snapshot. Tokens sold or transferred out before
+              closing will not count. Signing is gasless, and each wallet
+              may submit only one ballot. Wallet addresses and signatures
+              may be published for independent verification. Closing-snapshot
+              weighting is still being implemented for this test vote.
             </p>
           </section>
         ))}
@@ -682,3 +697,4 @@ function App() {
 }
 
 export default App
+
