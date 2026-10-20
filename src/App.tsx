@@ -1,5 +1,5 @@
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   createPublicClient,
   custom,
@@ -12,23 +12,144 @@ import './App.css'
 
 type WalletAddress = `0x${string}`
 
-const options = [
-  { id: 'a', name: 'Parlay A', description: 'Community wager option 1' },
-  { id: 'b', name: 'Parlay B', description: 'Community wager option 2' },
-  { id: 'c', name: 'Parlay C', description: 'Community wager option 3' },
-]
+type ProposalOption = {
+  id: number
+  proposal_id: number
+  title: string
+  description: string | null
+}
+
+type VotingResult = {
+  option_id: number
+  voting_power: string
+  percentage: number
+}
+
+type Proposal = {
+  id: number
+  title: string
+  description: string | null
+  snapshot_block: string
+  start_time: string
+  end_time: string
+  status: string
+  options: ProposalOption[]
+  results?: VotingResult[]
+  proof_url?: string | null
+  results_finalized?: boolean
+}
 
 const publicClient = createPublicClient({
   chain: robinhood,
   transport: http(),
 })
 
+function formatCountdown(endTime: string, now: number) {
+  const remaining = new Date(endTime).getTime() - now
+
+  if (!Number.isFinite(remaining)) {
+    return 'Deadline unavailable'
+  }
+
+  if (remaining <= 0) {
+    return 'Voting closed'
+  }
+
+  const seconds = Math.floor(remaining / 1000)
+  const days = Math.floor(seconds / 86400)
+  const hours = Math.floor((seconds % 86400) / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+  const secs = seconds % 60
+
+  if (days > 0) {
+    return `${days}d ${hours}h ${minutes}m remaining`
+  }
+
+  return `${hours}h ${minutes}m ${secs}s remaining`
+}
+
+function formatVotingPower(value: string) {
+  try {
+    return BigInt(value).toLocaleString()
+  } catch {
+    return value
+  }
+}
+
 function App() {
-  const [selected, setSelected] = useState('a')
   const [wallet, setWallet] = useState<WalletAddress | null>(null)
   const [balance, setBalance] = useState<string | null>(null)
   const [connecting, setConnecting] = useState(false)
   const [error, setError] = useState('')
+
+  const [proposals, setProposals] = useState<Proposal[]>([])
+  const [loading, setLoading] = useState(true)
+  const [proposalError, setProposalError] = useState('')
+  const [now, setNow] = useState(Date.now())
+  const [selected, setSelected] = useState<Record<number, number>>({})
+
+  useEffect(() => {
+    let active = true
+
+    async function loadProposals() {
+      try {
+        const response = await fetch('/api/proposals', {
+          cache: 'no-store',
+        })
+
+        if (!response.ok) {
+          throw new Error('Unable to load proposals.')
+        }
+
+        const data = await response.json() as {
+          success: boolean
+          proposals?: Proposal[]
+          error?: string
+        }
+
+        if (!data.success || !Array.isArray(data.proposals)) {
+          throw new Error(
+            data.error || 'Invalid proposals response.'
+          )
+        }
+
+        if (active) {
+          setProposals(data.proposals)
+          setProposalError('')
+        }
+      } catch (err) {
+        if (active) {
+          setProposalError(
+            err instanceof Error
+              ? err.message
+              : 'Unable to load proposals.'
+          )
+        }
+      } finally {
+        if (active) {
+          setLoading(false)
+        }
+      }
+    }
+
+    void loadProposals()
+
+    // Refresh proposals and finalized results every 30 seconds.
+    const refresh = window.setInterval(() => {
+      void loadProposals()
+    }, 30000)
+
+    // Update voting countdowns every second.
+    const clock = window.setInterval(() => {
+      setNow(Date.now())
+    }, 1000)
+
+    return () => {
+      active = false
+      window.clearInterval(refresh)
+      window.clearInterval(clock)
+    }
+  }, [])
 
   async function connectWallet() {
     setConnecting(true)
@@ -47,11 +168,6 @@ function App() {
         )
       }
 
-      const walletClient = createPublicClient({
-        chain: robinhood,
-        transport: custom(ethereum),
-      })
-
       const accounts = await ethereum.request({
         method: 'eth_requestAccounts',
       }) as WalletAddress[]
@@ -62,7 +178,6 @@ function App() {
 
       const address = accounts[0]
 
-      // Read balance on Robinhood Chain, not Ethereum mainnet.
       const [rawBalance, decimals] = await Promise.all([
         publicClient.readContract({
           address: PARLAY_TOKEN,
@@ -80,15 +195,141 @@ function App() {
       setWallet(address)
       setBalance(formatUnits(rawBalance, decimals))
 
-      // Keep this client available for the next voting step.
-      void walletClient
+      // Reserved for the future signed-voting integration.
+      void custom(ethereum)
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : 'Wallet connection failed.'
+        err instanceof Error
+          ? err.message
+          : 'Wallet connection failed.'
       )
     } finally {
       setConnecting(false)
     }
+  }
+
+  const activeProposals = proposals.filter(
+    (proposal) =>
+      proposal.status === 'open' &&
+      new Date(proposal.start_time).getTime() <= now &&
+      new Date(proposal.end_time).getTime() > now
+  )
+
+  const closedProposals = proposals.filter(
+    (proposal) =>
+      proposal.status === 'closed' ||
+      new Date(proposal.end_time).getTime() <= now
+  )
+
+  function renderResults(proposal: Proposal) {
+    const finalized =
+      proposal.results_finalized === true &&
+      Array.isArray(proposal.results)
+
+    if (!finalized) {
+      return (
+        <div className="balance">
+          <span>FINAL VOTING RESULTS</span>
+
+          <strong>AWAITING VERIFICATION</strong>
+
+          <small>
+            Verified results and voting proof are not yet available.
+            No vote totals will be displayed until the voting
+            verification system is operational.
+          </small>
+        </div>
+      )
+    }
+
+    return (
+      <div className="balance">
+        <span>FINAL VOTING RESULTS</span>
+
+        {proposal.options.map((option) => {
+          const result = proposal.results?.find(
+            (item) => item.option_id === option.id
+          )
+
+          const percentage = Math.max(
+            0,
+            Math.min(
+              100,
+              Number.isFinite(result?.percentage)
+                ? result!.percentage
+                : 0
+            )
+          )
+
+          return (
+            <div
+              key={option.id}
+              style={{ marginTop: 18, textAlign: 'left' }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                  marginBottom: 8,
+                }}
+              >
+                <strong>{option.title}</strong>
+                <strong>{percentage.toFixed(2)}%</strong>
+              </div>
+
+              <div
+                style={{
+                  width: '100%',
+                  height: 12,
+                  borderRadius: 999,
+                  background: 'rgba(255,255,255,0.16)',
+                  overflow: 'hidden',
+                }}
+              >
+                <div
+                  style={{
+                    width: `${percentage}%`,
+                    height: '100%',
+                    borderRadius: 999,
+                    background:
+                      'linear-gradient(90deg, #16a34a, #e5c35b)',
+                  }}
+                />
+              </div>
+
+              <small>
+                {result
+                  ? formatVotingPower(result.voting_power)
+                  : '0'}{' '}
+                weighted votes
+              </small>
+            </div>
+          )
+        })}
+
+        {proposal.proof_url ? (
+          <p style={{ marginTop: 22 }}>
+            <a
+              href={proposal.proof_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                color: '#f3d878',
+                fontWeight: 700,
+                textDecoration: 'underline',
+              }}
+            >
+              VIEW VOTING PROOF ↗
+            </a>
+          </p>
+        ) : (
+          <small>
+            Independent voting proof is not yet available.
+          </small>
+        )}
+      </div>
+    )
   }
 
   return (
@@ -127,57 +368,176 @@ function App() {
         {error && <p role="alert">{error}</p>}
       </section>
 
-      <section className="proposal">
-        <div className="section-top">
-          <span>PROPOSAL #001</span>
-          <span className="status">DEMO</span>
-        </div>
+      {loading && (
+        <section className="proposal">
+          <h2>Loading proposals...</h2>
+        </section>
+      )}
 
-        <h2>Choose the next community parlay</h2>
-        <p>Select your preferred option below.</p>
+      {proposalError && (
+        <section className="proposal">
+          <h2>Unable to load proposals</h2>
+          <p role="alert">{proposalError}</p>
+        </section>
+      )}
 
-        <div className="choices">
-          {options.map(option => (
-            <button
-              key={option.id}
-              className={`choice ${selected === option.id ? 'active' : ''}`}
-              onClick={() => setSelected(option.id)}
-            >
-              <span className="circle">
-                {selected === option.id ? '✓' : ''}
-              </span>
+      {!loading &&
+        !proposalError &&
+        activeProposals.length === 0 && (
+          <section className="proposal">
+            <div className="section-top">
+              <span>COMMUNITY GOVERNANCE</span>
+              <span className="status">NO ACTIVE VOTES</span>
+            </div>
+
+            <h2>No active proposals</h2>
+
+            <p>
+              There are currently no open voting proposals.
+              Check back when the developers publish the next one.
+            </p>
+          </section>
+        )}
+
+      {!proposalError &&
+        activeProposals.map((proposal) => (
+          <section className="proposal" key={proposal.id}>
+            <div className="section-top">
               <span>
-                <strong>{option.name}</strong>
-                <small>{option.description}</small>
+                PROPOSAL #
+                {String(proposal.id).padStart(3, '0')}
               </span>
+
+              <span className="status">OPEN</span>
+            </div>
+
+            <h2>{proposal.title}</h2>
+
+            {proposal.description && (
+              <p>{proposal.description}</p>
+            )}
+
+            <p>
+              <strong>TIME REMAINING:</strong>{' '}
+              {formatCountdown(proposal.end_time, now)}
+            </p>
+
+            <p>
+              <small>
+                Voting closes:{' '}
+                {new Date(
+                  proposal.end_time
+                ).toLocaleString()}
+              </small>
+            </p>
+
+            <div className="choices">
+              {proposal.options?.map((option) => (
+                <button
+                  key={option.id}
+                  className={`choice ${
+                    selected[proposal.id] === option.id
+                      ? 'active'
+                      : ''
+                  }`}
+                  onClick={() =>
+                    setSelected((previous) => ({
+                      ...previous,
+                      [proposal.id]: option.id,
+                    }))
+                  }
+                >
+                  <span className="circle">
+                    {selected[proposal.id] === option.id
+                      ? '✓'
+                      : ''}
+                  </span>
+
+                  <span>
+                    <strong>{option.title}</strong>
+
+                    {option.description && (
+                      <small>{option.description}</small>
+                    )}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            <div className="balance">
+              <span>YOUR CURRENT $PARLAY BALANCE</span>
+
+              <strong>
+                {balance === null
+                  ? '— PARLAY'
+                  : `${Number(
+                      balance
+                    ).toLocaleString()} PARLAY`}
+              </strong>
+
+              <small>
+                {wallet
+                  ? 'Current balance on Robinhood Chain. Voting power will use the proposal snapshot.'
+                  : 'Connect your wallet to view your token balance.'}
+              </small>
+            </div>
+
+            <button className="vote" disabled>
+              VOTING NOT YET ENABLED
             </button>
-          ))}
-        </div>
 
-        <div className="balance">
-          <span>YOUR VOTING POWER</span>
+            <p className="notice">
+              Proposal is open for viewing.
+              Votes are not being accepted or recorded yet.
+              Results will remain hidden until voting closes.
+            </p>
+          </section>
+        ))}
 
-          <strong>
-            {balance === null
-              ? '— PARLAY'
-              : `${Number(balance).toLocaleString()} PARLAY`}
-          </strong>
+      {!proposalError &&
+        closedProposals.length > 0 && (
+          <section className="proposal">
+            <div className="section-top">
+              <span>PROPOSAL HISTORY</span>
+              <span className="status">CLOSED</span>
+            </div>
 
-          <small>
-            {wallet
-              ? 'Current token balance on Robinhood Chain.'
-              : 'Connect your wallet to verify your token balance.'}
-          </small>
-        </div>
+            <h2>Previous Proposals</h2>
 
-        <button className="vote" disabled>
-          VOTING NOT YET ENABLED
-        </button>
+            {closedProposals.map((proposal) => (
+              <div
+                key={proposal.id}
+                style={{ marginTop: 28 }}
+              >
+                <h3>
+                  #{String(proposal.id).padStart(3, '0')}
+                  {' — '}
+                  {proposal.title}
+                </h3>
 
-        <p className="notice">
-          Demo interface only. No votes are currently recorded.
-        </p>
-      </section>
+                {proposal.description && (
+                  <p>{proposal.description}</p>
+                )}
+
+                <p>
+                  Closed:{' '}
+                  {new Date(
+                    proposal.end_time
+                  ).toLocaleString()}
+                </p>
+
+                <p>
+                  <small>
+                    Snapshot block:{' '}
+                    {proposal.snapshot_block}
+                  </small>
+                </p>
+
+                {renderResults(proposal)}
+              </div>
+            ))}
+          </section>
+        )}
 
       <footer>
         $PARLAY © 2026 · Community votes are advisory.
