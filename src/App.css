@@ -1,0 +1,281 @@
+
+:root {
+  font-family: Arial, Helvetica, sans-serif;
+  color: #ffffff;
+  background: #174b30;
+  font-synthesis: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  color: #ffffff;
+  background: linear-gradient(
+    145deg,
+    #318957 0%,
+    #26764a 45%,
+    #195b39 100%
+  );
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+  color: #ffffff;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.85;
+}
+
+.page {
+  max-width: 1000px;
+  margin: auto;
+  padding: 24px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid #7dc797;
+}
+
+.brand {
+  color: #ffdf85;
+  font-size: 28px;
+  font-weight: 900;
+  text-shadow: 0 2px 8px #145333;
+}
+
+.network {
+  font-size: 11px;
+  color: #ffffff;
+  letter-spacing: 2px;
+  font-weight: bold;
+}
+
+.hero {
+  text-align: center;
+  padding: 85px 12px 65px;
+}
+
+.eyebrow {
+  color: #baffce;
+  letter-spacing: 3px;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+h1 {
+  font-size: clamp(42px, 8vw, 80px);
+  line-height: 1.05;
+  margin: 20px 0;
+  font-weight: 900;
+  color: #ffffff;
+  text-shadow: 0 4px 12px #145333;
+}
+
+h1 span {
+  color: #ffdf85;
+}
+
+.hero p,
+.proposal p {
+  color: #f0fff3;
+  line-height: 1.7;
+}
+
+.hero p {
+  max-width: 520px;
+  margin: 0 auto 30px;
+}
+
+.connect,
+.vote {
+  background: linear-gradient(
+    135deg,
+    #e4bc58,
+    #bd8d30
+  );
+  color: #ffffff;
+  border: 2px solid #ffe49a;
+  padding: 17px 28px;
+  border-radius: 10px;
+  font-weight: 900;
+  text-shadow: 0 1px 3px #805c20;
+  box-shadow: 0 4px 15px #14533355;
+}
+
+.connect:hover:not(:disabled),
+.vote:hover:not(:disabled) {
+  background: linear-gradient(
+    135deg,
+    #f4d47a,
+    #d3a341
+  );
+  color: #ffffff;
+}
+
+.proposal {
+  max-width: 670px;
+  margin: auto;
+  background: #267348;
+  border: 1px solid #8dd5a2;
+  border-radius: 20px;
+  padding: 28px;
+  box-shadow: 0 12px 35px #12462d70;
+}
+
+.section-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #ffdf85;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.status {
+  background: #419966;
+  color: #ffffff;
+  padding: 5px 12px;
+  border-radius: 20px;
+}
+
+h2 {
+  font-size: 27px;
+  color: #ffffff;
+}
+
+.choices {
+  display: grid;
+  gap: 12px;
+  margin-top: 25px;
+}
+
+.choice {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  text-align: left;
+  padding: 18px;
+  background: #32865a;
+  border: 1px solid #75c995;
+  border-radius: 12px;
+  color: #ffffff;
+  transition: 0.2s ease;
+}
+
+.choice:hover {
+  background: #409a68;
+  border-color: #ffdf85;
+  color: #ffffff;
+}
+
+.choice.active {
+  border: 2px solid #ffdf85;
+  background: #438b53;
+  color: #ffffff;
+  box-shadow: 0 0 12px #e6c56b40;
+}
+
+.circle {
+  display: grid;
+  place-items: center;
+  width: 25px;
+  height: 25px;
+  min-width: 25px;
+  border: 2px solid #ffdf85;
+  border-radius: 50%;
+  color: #ffdf85;
+  font-weight: bold;
+}
+
+.choice strong,
+.choice small {
+  display: block;
+}
+
+.choice strong {
+  color: #ffffff;
+  font-size: 16px;
+}
+
+.choice small {
+  color: #ecfff0;
+  margin-top: 5px;
+}
+
+.balance {
+  margin: 25px 0;
+  padding: 20px;
+  background: #206640;
+  border: 1px solid #6ebd88;
+  border-radius: 12px;
+}
+
+.balance span,
+.balance strong,
+.balance small {
+  display: block;
+}
+
+.balance span {
+  color: #e1ffeb;
+  font-size: 11px;
+  letter-spacing: 2px;
+}
+
+.balance strong {
+  font-size: 28px;
+  margin: 10px 0;
+  color: #ffdf85;
+}
+
+.balance small {
+  color: #ffffff;
+}
+
+.vote {
+  width: 100%;
+}
+
+.notice {
+  text-align: center;
+  font-size: 12px;
+  color: #ffffff;
+}
+
+footer {
+  text-align: center;
+  padding: 50px 10px;
+  color: #e2ffeb;
+  font-size: 12px;
+}
+
+@media (max-width: 600px) {
+  .page {
+    padding: 16px;
+  }
+
+  .hero {
+    padding: 60px 10px 45px;
+  }
+
+  .proposal {
+    padding: 20px;
+  }
+
+  .network {
+    font-size: 9px;
+    letter-spacing: 1px;
+  }
+}
