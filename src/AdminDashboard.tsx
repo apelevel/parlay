@@ -530,6 +530,7 @@ export default function Admin() {
                 }
                 style={fieldStyle}
               >
+                <option value={1 / 12}>5 minutes (TEST ONLY)</option>
                 <option value={24}>24 hours</option>
                 <option value={48}>48 hours</option>
                 <option value={72}>72 hours</option>

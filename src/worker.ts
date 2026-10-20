@@ -175,7 +175,7 @@ export default {
     if (url.pathname === '/api/proposals' && request.method === 'POST') {
       try {
         const body = await request.json() as CreateBody;
-        if (!body || typeof body.title !== 'string' || !body.title.trim() || body.title.length > 200 || typeof body.description !== 'string' || body.description.length > 2000 || !Array.isArray(body.options) || body.options.length < 2 || body.options.length > 10 || !body.options.every(o => typeof o === 'string' && !!o.trim() && o.length <= 200) || ![24, 48, 72].includes(body.durationHours) || !authOK(body)) return json({ success: false, error: 'Invalid proposal data' }, 400);
+        if (!body || typeof body.title !== 'string' || !body.title.trim() || body.title.length > 200 || typeof body.description !== 'string' || body.description.length > 2000 || !Array.isArray(body.options) || body.options.length < 2 || body.options.length > 10 || !body.options.every(o => typeof o === 'string' && !!o.trim() && o.length <= 200) || ![1 / 12, 24, 48, 72].includes(body.durationHours) || !authOK(body)) return json({ success: false, error: 'Invalid proposal data' }, 400);
         const now = Date.now();
         if (body.expiresAt <= now || body.expiresAt > now + 300000) return json({ success: false, error: 'Authorization expired' }, 401);
         const message = JSON.stringify({ action: 'CREATE_PARLAY_PROPOSAL', origin: url.origin, title: body.title, description: body.description, options: body.options, durationHours: body.durationHours, nonce: body.nonce, expiresAt: body.expiresAt });
