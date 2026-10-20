@@ -16,5 +16,10 @@
       "database_name": "parlay-votes",
       "database_id": "0be45815-1f95-4cfa-b461-5c19989f0311"
     }
-  ]
+  ],
+  "triggers": {
+    "crons": [
+      "* * * * *"
+    ]
+  }
 }
