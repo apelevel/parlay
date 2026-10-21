@@ -1,0 +1,52 @@
+name: Test Robinhood RPC
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-rpc.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Test historical PARLAY transfers
+        run: |
+          node - <<'NODE'
+          const url = "https://rpc.mainnet.chain.robinhood.com";
+          const body = {
+            jsonrpc: "2.0",
+            id: 1,
+            method: "eth_getLogs",
+            params: [{
+              fromBlock: "0x" + (94049868).toString(16),
+              toBlock: "0x" + (94050367).toString(16),
+              address: "0xc4a481c39437680c54a2fdbe170d48a919ec98b7",
+              topics: [
+                "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+              ]
+            }]
+          };
+
+          async function main() {
+            const response = await fetch(url, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body)
+            });
+
+            const data = await response.json();
+            console.log("HTTP status:", response.status);
+            console.log("Transfers found:", data.result?.length ?? "Unavailable");
+            console.log("RPC error:", data.error ?? "None");
+
+            if (!response.ok || !Array.isArray(data.result)) {
+              process.exitCode = 1;
+            }
+          }
+
+          main().catch(error => {
+            console.error(error);
+            process.exitCode = 1;
+          });
+          NODE
