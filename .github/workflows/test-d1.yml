@@ -1,0 +1,21 @@
+name: Test ApeLevel PARLAY Database
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-d1.yml'
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read PARLAY snapshot checkpoint
+        env:
+          CF_TOKEN: ${{ secrets.APELEVEL_PARLAY_CLOUDFLARE_TOKEN }}
+        run: |
+          curl --fail-with-body -sS \
+            "https://api.cloudflare.com/client/v4/accounts/c3cc3f89f506b5bf3a5aa260a5045ae0/d1/database/0be45815-1f95-4cfa-b461-5c19989f0311/query" \
+            -H "Authorization: Bearer $CF_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data '{"sql":"SELECT proposal_id, closing_block, next_block FROM snapshot_progress WHERE proposal_id = 4"}' \
+            | tee result.json
+          node -e 'const d=require("./result.json");if(!d.success)process.exit(1);console.log("DATABASE CONNECTION SUCCESSFUL")'
