@@ -22,7 +22,7 @@ type RpcResult = string | Block | TransferLog[];
 type TransferLog = { address: string; topics: string[]; data: string; blockNumber: string; transactionHash: string; logIndex: string };
 const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
 const WINDOW_BLOCKS = 500n;
-const WINDOWS_PER_RUN = 8;
+const WINDOWS_PER_RUN = 1; // Public RPC: one transfer-log window per cron run to avoid bursts.
 const hex = (v: bigint) => `0x${v.toString(16)}`;
 const pause = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
@@ -34,6 +34,8 @@ async function rpc(method: string, params: unknown[]): Promise<RpcResult> {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params })
       });
+      // HTTP 429 is an explicit rate limit; do not immediately retry and amplify it.
+      if (response.status === 429) throw new Error('HTTP 429 (public RPC rate limit)');
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const payload = await response.json() as { result?: RpcResult | null; error?: { code?: number; message?: string } };
       if (payload.error) throw new Error(`RPC ${payload.error.code}: ${payload.error.message || 'unknown error'}`);
@@ -41,6 +43,8 @@ async function rpc(method: string, params: unknown[]): Promise<RpcResult> {
       return payload.result;
     } catch (error) {
       lastError = error instanceof Error ? error.message : String(error);
+      // Rate limits are handled by the next minute's scheduled invocation.
+      if (lastError.includes('HTTP 429')) break;
       if (attempt < 2) await pause(300 * (attempt + 1));
     }
   }
@@ -311,4 +315,3 @@ export default {
     return env.ASSETS.fetch(request);
   }
 };
-
