@@ -2,6 +2,9 @@ name: ApeLevel x PARLAY Snapshot Processor
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/finalize-parlay.yml
 
 concurrency:
   group: apelevel-parlay-snapshot
