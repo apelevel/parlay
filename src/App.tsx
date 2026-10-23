@@ -93,6 +93,52 @@ function App() {
   const [voteErrors, setVoteErrors] = useState<Record<number, string>>({})
   const [voteSuccess, setVoteSuccess] = useState<Record<number, string>>({})
 
+  const [votedProposalIds, setVotedProposalIds] = useState<number[]>([])
+  const [checkingBallots, setCheckingBallots] = useState(false)
+  const [ballotStatusVerified, setBallotStatusVerified] = useState(false)
+
+  useEffect(() => {
+    if (!wallet) {
+      setVotedProposalIds([])
+      setBallotStatusVerified(false)
+      setCheckingBallots(false)
+      return
+    }
+
+    let cancelled = false
+    setCheckingBallots(true)
+    setBallotStatusVerified(false)
+    setVotedProposalIds([])
+
+    fetch(`/api/votes/status?wallet=${encodeURIComponent(wallet)}`, {
+      cache: 'no-store'
+    })
+      .then(async response => {
+        const data = await response.json()
+        if (!response.ok || !data.success) {
+          throw new Error('Unable to verify ballot status')
+        }
+        return data.votedProposalIds as number[]
+      })
+      .then(ids => {
+        if (!cancelled) {
+          setVotedProposalIds(ids)
+          setBallotStatusVerified(true)
+        }
+      })
+      .catch(error => {
+        if (!cancelled) {
+          setError(error instanceof Error ? error.message : 'Ballot status unavailable')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setCheckingBallots(false)
+      })
+
+    return () => { cancelled = true }
+  }, [wallet])
+
+
   useEffect(() => {
     let active = true
 
@@ -584,11 +630,24 @@ function App() {
 
             <button
               className="vote"
-              disabled={!selected[proposal.id] || submitting !== null || !!voteSuccess[proposal.id]}
+              disabled={
+                !selected[proposal.id] ||
+                submitting !== null ||
+                !!voteSuccess[proposal.id] ||
+                checkingBallots ||
+                !ballotStatusVerified ||
+                votedProposalIds.includes(proposal.id)
+              }
               onClick={() => void submitVote(proposal)}
             >
-              {voteSuccess[proposal.id]
-                ? 'BALLOT RECORDED ✓'
+              {votedProposalIds.includes(proposal.id)
+                ? 'THIS WALLET HAS ALREADY CAST A BALLOT'
+                : checkingBallots
+                  ? 'CHECKING BALLOT STATUS...'
+                  : wallet && !ballotStatusVerified
+                    ? 'BALLOT STATUS UNAVAILABLE'
+                  : voteSuccess[proposal.id]
+                    ? 'BALLOT RECORDED ✓'
                 : submitting === proposal.id
                   ? 'SIGNING / SUBMITTING...'
                   : !selected[proposal.id]

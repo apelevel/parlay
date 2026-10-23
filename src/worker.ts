@@ -238,6 +238,24 @@ export default {
         }) });
       } catch (error) { console.error('Proposal listing:', error); return json({ success: false, error: 'Database error' }, 500); }
     }
+    if (url.pathname === '/api/votes/status' && request.method === 'GET') {
+      const wallet = url.searchParams.get('wallet');
+      if (!wallet || !isAddress(wallet)) {
+        return json({ success: false, error: 'Invalid wallet address' }, 400);
+      }
+      try {
+        const { results } = await env.DB.prepare(
+          'SELECT proposal_id FROM votes WHERE wallet_address = ?'
+        ).bind(wallet.toLowerCase()).all<{ proposal_id: number }>();
+        return json({
+          success: true,
+          votedProposalIds: results.map(row => row.proposal_id)
+        });
+      } catch (error) {
+        console.error('Ballot status:', error);
+        return json({ success: false, error: 'Unable to check ballot status' }, 500);
+      }
+    }
     const proofMatch = url.pathname.match(/^\/api\/proposals\/([1-9]\d*)\/proof$/);
     if (proofMatch && request.method === 'GET') {
       const id = Number(proofMatch[1]);
