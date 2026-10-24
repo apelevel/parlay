@@ -16,18 +16,20 @@ type WalletProvider = {
   isRabby?: boolean
   isMetaMask?: boolean
   isCoinbaseWallet?: boolean
+  isPhantom?: boolean
   providers?: WalletProvider[]
 }
 
 type DetectedWallet = {
   id: string
   name: string
-  kind: 'rabby' | 'metamask' | 'coinbase' | 'other'
+  kind: 'rabby' | 'metamask' | 'coinbase' | 'phantom' | 'other'
   provider: WalletProvider
 }
 
 function classifyWallet(name: string, rdns = '', provider?: WalletProvider): DetectedWallet['kind'] {
   const identity = `${name} ${rdns}`.toLowerCase()
+  if (identity.includes('phantom') || provider?.isPhantom) return 'phantom'
   if (identity.includes('rabby') || provider?.isRabby) return 'rabby'
   if (identity.includes('coinbase') || provider?.isCoinbaseWallet) return 'coinbase'
   if (identity.includes('metamask') || provider?.isMetaMask) return 'metamask'
@@ -118,12 +120,16 @@ function App() {
       if (!detail?.provider || !detail.info) return
       const { provider, info } = detail
       setDetectedWallets((current) => {
-        if (current.some((item) => item.provider === provider)) return current
         const name = info.name || 'Browser Wallet'
+        const kind = classifyWallet(name, info.rdns, provider)
+        if (current.some((item) =>
+          item.provider === provider ||
+          (kind !== 'other' && item.kind === kind)
+        )) return current
         return [...current, {
           id: info.uuid || `${name}-${current.length}`,
           name,
-          kind: classifyWallet(name, info.rdns, provider),
+          kind,
           provider,
         }]
       })
@@ -141,11 +147,15 @@ function App() {
       setDetectedWallets((current) => {
         const next = [...current]
         for (const provider of candidates) {
-          if (next.some((item) => item.provider === provider)) continue
           const kind = classifyWallet('', '', provider)
+          if (next.some((item) =>
+            item.provider === provider ||
+            (kind !== 'other' && item.kind === kind)
+          )) continue
           const label = kind === 'rabby' ? 'Rabby Wallet'
             : kind === 'metamask' ? 'MetaMask'
             : kind === 'coinbase' ? 'Coinbase Wallet'
+            : kind === 'phantom' ? 'Phantom Wallet'
             : 'Browser Wallet'
           next.push({ id: `legacy-${next.length}`, name: label, kind, provider })
         }
