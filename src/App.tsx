@@ -1,8 +1,7 @@
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   createPublicClient,
-  custom,
   http,
   formatUnits,
   erc20Abi,
@@ -10,6 +9,30 @@ import {
 } from 'viem'
 import { robinhood, PARLAY_TOKEN } from './chain'
 import './App.css'
+
+// PARLAY_WALLET_CHOOSER_V1: EIP-6963 discovery keeps wallet extensions separate.
+type WalletProvider = {
+  request(args: { method: string; params?: unknown[] }): Promise<unknown>
+  isRabby?: boolean
+  isMetaMask?: boolean
+  isCoinbaseWallet?: boolean
+  providers?: WalletProvider[]
+}
+
+type DetectedWallet = {
+  id: string
+  name: string
+  kind: 'rabby' | 'metamask' | 'coinbase' | 'other'
+  provider: WalletProvider
+}
+
+function classifyWallet(name: string, rdns = '', provider?: WalletProvider): DetectedWallet['kind'] {
+  const identity = `${name} ${rdns}`.toLowerCase()
+  if (identity.includes('rabby') || provider?.isRabby) return 'rabby'
+  if (identity.includes('coinbase') || provider?.isCoinbaseWallet) return 'coinbase'
+  if (identity.includes('metamask') || provider?.isMetaMask) return 'metamask'
+  return 'other'
+}
 
 type WalletAddress = `0x${string}`
 
@@ -82,6 +105,59 @@ function App() {
   const [wallet, setWallet] = useState<WalletAddress | null>(null)
   const [balance, setBalance] = useState<string | null>(null)
   const [connecting, setConnecting] = useState(false)
+  const [walletChooserOpen, setWalletChooserOpen] = useState(false)
+  const [detectedWallets, setDetectedWallets] = useState<DetectedWallet[]>([])
+  const selectedProviderRef = useRef<WalletProvider | null>(null)
+
+  useEffect(() => {
+    const onAnnouncement = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        info?: { uuid?: string; name?: string; rdns?: string }
+        provider?: WalletProvider
+      }>).detail
+      if (!detail?.provider || !detail.info) return
+      const { provider, info } = detail
+      setDetectedWallets((current) => {
+        if (current.some((item) => item.provider === provider)) return current
+        const name = info.name || 'Browser Wallet'
+        return [...current, {
+          id: info.uuid || `${name}-${current.length}`,
+          name,
+          kind: classifyWallet(name, info.rdns, provider),
+          provider,
+        }]
+      })
+    }
+
+    window.addEventListener('eip6963:announceProvider', onAnnouncement)
+    window.dispatchEvent(new Event('eip6963:requestProvider'))
+
+    // Legacy fallback only when necessary, including multiple injected providers.
+    // Wait briefly so announced providers can register first.
+    const fallback = window.setTimeout(() => {
+      const injected = (window as Window & { ethereum?: WalletProvider }).ethereum
+      if (!injected) return
+      const candidates = Array.isArray(injected.providers) ? injected.providers : [injected]
+      setDetectedWallets((current) => {
+        const next = [...current]
+        for (const provider of candidates) {
+          if (next.some((item) => item.provider === provider)) continue
+          const kind = classifyWallet('', '', provider)
+          const label = kind === 'rabby' ? 'Rabby Wallet'
+            : kind === 'metamask' ? 'MetaMask'
+            : kind === 'coinbase' ? 'Coinbase Wallet'
+            : 'Browser Wallet'
+          next.push({ id: `legacy-${next.length}`, name: label, kind, provider })
+        }
+        return next
+      })
+    }, 500)
+
+    return () => {
+      window.clearTimeout(fallback)
+      window.removeEventListener('eip6963:announceProvider', onAnnouncement)
+    }
+  }, [])
   const [error, setError] = useState('')
 
   const [proposals, setProposals] = useState<Proposal[]>([])
@@ -203,42 +279,28 @@ function App() {
   }, [])
 
   function disconnectWallet() {
-    // Disconnect this website session. Browser wallet extensions may
-    // retain their own authorization and must be managed separately.
+    selectedProviderRef.current = null
     setWallet(null)
     setBalance(null)
     setError('')
     setSelected({})
     setVoteErrors({})
     setVoteSuccess({})
+    setVotedProposalIds([])
+    setBallotStatusVerified(false)
   }
 
-  async function connectWallet() {
+  async function connectWallet(provider: WalletProvider) {
     setConnecting(true)
     setError('')
 
     try {
-      const ethereum = (
-        window as Window & {
-          ethereum?: Parameters<typeof custom>[0]
-        }
-      ).ethereum
-
-      if (!ethereum) {
-        throw new Error(
-          'No browser wallet detected. Install or enable an EVM wallet extension.'
-        )
-      }
-
-      const accounts = await ethereum.request({
+      const accounts = await provider.request({
         method: 'eth_requestAccounts',
       }) as WalletAddress[]
 
-      if (!accounts.length) {
-        throw new Error('No wallet account selected.')
-      }
-
-      const address = accounts[0]
+      if (!accounts.length) throw new Error('No wallet account selected.')
+      const address = getAddress(accounts[0])
 
       const [rawBalance, decimals] = await Promise.all([
         publicClient.readContract({
@@ -254,17 +316,12 @@ function App() {
         }),
       ])
 
+      selectedProviderRef.current = provider
       setWallet(address)
       setBalance(formatUnits(rawBalance, decimals))
-
-      // Reserved for the future signed-voting integration.
-      void custom(ethereum)
+      setWalletChooserOpen(false)
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Wallet connection failed.'
-      )
+      setError(err instanceof Error ? err.message : 'Wallet connection failed.')
     } finally {
       setConnecting(false)
     }
@@ -278,10 +335,10 @@ function App() {
     setSubmitting(proposal.id)
 
     try {
-      const ethereum = (
-        window as Window & { ethereum?: Parameters<typeof custom>[0] }
-      ).ethereum
-      if (!ethereum) throw new Error('No browser wallet detected.')
+      const ethereum = selectedProviderRef.current
+      if (!ethereum || !wallet) {
+        throw new Error('Choose and connect your wallet before voting.')
+      }
 
       // Check the active account and network again at signing time.
       const accounts = await ethereum.request({
@@ -501,7 +558,7 @@ function App() {
 
         <button
           className="connect"
-          onClick={wallet ? disconnectWallet : connectWallet}
+          onClick={wallet ? disconnectWallet : () => setWalletChooserOpen(true)}
           disabled={connecting || submitting !== null}
         >
           {connecting
@@ -512,6 +569,50 @@ function App() {
         </button>
 
         {error && <p role="alert">{error}</p>}
+        {walletChooserOpen && !wallet && (
+          <div className="wallet-overlay" role="presentation" onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !connecting) setWalletChooserOpen(false)
+          }}>
+            <div className="wallet-dialog" role="dialog" aria-modal="true" aria-labelledby="wallet-dialog-title">
+              <button type="button" className="wallet-close" aria-label="Close wallet chooser"
+                onClick={() => setWalletChooserOpen(false)} disabled={connecting}>×</button>
+              <h2 id="wallet-dialog-title">CHOOSE YOUR WALLET</h2>
+              <p>Select the wallet you want to use for PARLAY voting.</p>
+              {(['metamask', 'rabby', 'coinbase'] as const).map((kind) => {
+                const available = detectedWallets.filter((item) => item.kind === kind)
+                const label = kind === 'metamask' ? 'MetaMask'
+                  : kind === 'rabby' ? 'Rabby Wallet' : 'Coinbase Wallet'
+                return (
+                  <div key={kind}>
+                    {available.length ? available.map((item) => (
+                      <button key={item.id} type="button" className="wallet-choice"
+                        disabled={connecting} onClick={() => void connectWallet(item.provider)}>
+                        <span className="wallet-symbol">{kind === 'metamask' ? '🦊' : kind === 'rabby' ? '🐰' : '🔵'}</span>
+                        <span>{label}</span><span className="wallet-availability">CONNECT →</span>
+                      </button>
+                    )) : (
+                      <button key={`${kind}-missing`} type="button" className="wallet-choice" disabled>
+                        <span className="wallet-symbol">{kind === 'metamask' ? '🦊' : kind === 'rabby' ? '🐰' : '🔵'}</span>
+                        <span>{label}</span><span className="wallet-availability">NOT DETECTED</span>
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
+              {detectedWallets.filter((item) => item.kind === 'other').map((item) => (
+                <button key={item.id} type="button" className="wallet-choice"
+                  disabled={connecting} onClick={() => void connectWallet(item.provider)}>
+                  <span className="wallet-symbol">◈</span><span>{item.name}</span>
+                  <span className="wallet-availability">CONNECT →</span>
+                </button>
+              ))}
+              {connecting && <p>Waiting for wallet approval...</p>}
+              <p className="wallet-footnote">Browser extensions only. No seed phrase or private key is requested.</p>
+              {error && <p role="alert">{error}</p>}
+            </div>
+          </div>
+        )}
+
       </section>
 
       {loading && (

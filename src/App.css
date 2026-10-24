@@ -279,3 +279,35 @@ footer {
     letter-spacing: 1px;
   }
 }
+
+/* PARLAY wallet chooser — isolated from governance and voting styles */
+.wallet-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(5, 25, 16, .83);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+}
+.wallet-dialog {
+  position: relative; width: 100%; max-width: 440px; max-height: 90vh;
+  overflow-y: auto; text-align: left; padding: 30px 24px;
+  background: #174b30; border: 2px solid #d7af59;
+  border-radius: 18px; box-shadow: 0 25px 70px #07160d;
+}
+.wallet-dialog h2 { color: #ffdf85; margin: 0 34px 10px 0; font-size: 24px; }
+.wallet-dialog p { color: #e5f5e8; line-height: 1.5; }
+.wallet-close {
+  position: absolute; top: 14px; right: 15px; padding: 4px 10px;
+  background: transparent; border: 1px solid #82bd97; border-radius: 8px;
+  font-size: 24px;
+}
+.wallet-choice {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  text-align: left; margin-top: 10px; padding: 14px 12px;
+  border: 1px solid #81bc91; background: #236c44;
+  border-radius: 12px; font-weight: bold;
+}
+.wallet-choice:hover:not(:disabled) { background: #327e54; border-color: #ffdf85; }
+.wallet-choice:disabled { opacity: .58; }
+.wallet-symbol { font-size: 23px; min-width: 32px; }
+.wallet-availability { margin-left: auto; font-size: 10px; color: #ffdf85; white-space: nowrap; }
+.wallet-footnote { font-size: 12px; }
